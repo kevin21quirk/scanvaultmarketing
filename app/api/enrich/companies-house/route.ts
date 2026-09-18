@@ -121,7 +121,7 @@ export async function POST(req: NextRequest) {
       const leads = await prisma.lead.findMany({
         where: {
           companiesHouseNo: null,
-          providerName: { not: null },
+          status: { not: "ARCHIVED" },
         },
         take: limit,
         orderBy: { createdAt: "desc" },

@@ -79,10 +79,16 @@ export function LeadEngineWorkflow({
         });
         const data = await res.json();
         if (res.ok) {
-          toast.success(
-            `Enriched ${data.enriched}/${data.processed} leads with Companies House data`
-          );
-          setDone("enrich");
+          if (data.processed === 0) {
+            toast.info(
+              "No leads to enrich yet — run a CQC scan or import leads first"
+            );
+          } else {
+            toast.success(
+              `Enriched ${data.enriched}/${data.processed} leads — directors added as contacts`
+            );
+            setDone("enrich");
+          }
           router.refresh();
         } else {
           toast.error(data.error ?? "Enrichment failed");
