@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/cqc-sync",
       "schedule": "0 6 * * 1"
+    },
+    {
+      "path": "/api/cron/sequence-runner",
+      "schedule": "0 8 * * *"
     }
   ]
 }
