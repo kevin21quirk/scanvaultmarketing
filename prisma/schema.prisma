@@ -387,6 +387,7 @@ model Sequence {
   name        String
   description String?
   status      SequenceStatus @default(DRAFT)
+  isDefault   Boolean        @default(false) // auto-enrol new leads
   // steps: [{ order, delayDays, type: "EMAIL"|"CALL"|"TASK"|"LINKEDIN", subject?, templateId?, note? }]
   steps       Json
   createdAt   DateTime       @default(now())

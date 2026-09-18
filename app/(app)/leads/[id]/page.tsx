@@ -23,6 +23,7 @@ import { ActivityPanel } from "@/components/activity-panel";
 import { TasksPanel } from "@/components/tasks-panel";
 import { formatDate, formatDateTime, formatCurrency, leadAddress } from "@/lib/utils";
 import { scoreLabel } from "@/lib/scoring";
+import { CadenceStepper } from "@/components/cadence-stepper";
 
 export const dynamic = "force-dynamic";
 
@@ -52,7 +53,7 @@ export default async function LeadDetailPage({
         include: { assignedTo: { select: { name: true } } },
       },
       campaignMemberships: { include: { campaign: { select: { name: true } } } },
-      sequenceEnrollments: { include: { sequence: { select: { name: true } } } },
+      sequenceEnrollments: { include: { sequence: true } },
     },
   });
 
@@ -117,6 +118,22 @@ export default async function LeadDetailPage({
           </Button>
         </div>
       </div>
+
+      {/* Cadence progress — the visual workflow stage */}
+      {lead.sequenceEnrollments.length > 0 && (
+        <div className="space-y-3">
+          {lead.sequenceEnrollments.map((e) => (
+            <CadenceStepper
+              key={e.id}
+              sequenceName={e.sequence.name}
+              steps={(e.sequence.steps as { order?: number; delayDays?: number; type?: string; label?: string }[]) ?? []}
+              currentStep={e.currentStep}
+              nextRunAt={e.nextRunAt}
+              status={e.status}
+            />
+          ))}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left column — details + contacts */}

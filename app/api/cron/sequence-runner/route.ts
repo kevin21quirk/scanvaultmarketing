@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { sendEmail, mergeFields } from "@/lib/email";
+import { enrollAllMissing } from "@/lib/cadence";
 
 // GET /api/cron/sequence-runner — Vercel Cron endpoint (runs daily).
-// Executes due sequence steps: EMAIL sends via SMTP (or logs when SMTP is
-// not configured), CALL/TASK/LINKEDIN create tasks for the team.
-// Respects doNotContact / unsubscribed flags and marks enrollments
-// COMPLETED when they run out of steps.
+// Executes the ScanVault outreach cadence for every enrolled lead:
+//   EMAIL    — sends via SMTP (or logs the send when SMTP is absent)
+//   BROCHURE — creates a "post brochure" task when the lead has an
+//              address, otherwise records that it was skipped
+//   CALL / LINKEDIN / TASK — creates tasks for the team
+// First touch auto-moves the lead's pipeline stage to "Contacted".
+// Also sweeps in any lead not yet enrolled in the default cadence.
+// Respects doNotContact / unsubscribed flags throughout.
 
 export const maxDuration = 300;
 
@@ -14,10 +19,30 @@ type Step = {
   order?: number;
   delayDays?: number;
   type?: string;
+  label?: string;
   subject?: string;
   templateId?: string;
   note?: string;
 };
+
+async function advanceToContacted(leadId: string) {
+  const contacted = await prisma.pipelineStage.findFirst({
+    where: { name: "Contacted" },
+  });
+  if (!contacted) return;
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
+    include: { stage: true },
+  });
+  if (!lead || lead.stage?.isWon || lead.stage?.isLost) return;
+  // Only auto-advance while still at the entry/default stage or unstaged.
+  if (!lead.stageId || lead.stage?.isDefault || lead.stage?.name === "Researching") {
+    await prisma.lead.update({
+      where: { id: leadId },
+      data: { stageId: contacted.id },
+    });
+  }
+}
 
 export async function GET(req: NextRequest) {
   const auth = req.headers.get("authorization");
@@ -28,6 +53,9 @@ export async function GET(req: NextRequest) {
 
   const url = new URL(req.url);
   const batchSize = Math.min(Number(url.searchParams.get("batch")) || 50, 200);
+
+  // Sweep: make sure every eligible lead is enrolled in the cadence.
+  const newlyEnrolled = await enrollAllMissing();
 
   const now = new Date();
   const due = await prisma.sequenceEnrollment.findMany({
@@ -47,6 +75,7 @@ export async function GET(req: NextRequest) {
 
   let executed = 0;
   let emailsSent = 0;
+  let brochures = 0;
   let tasksCreated = 0;
   let completed = 0;
   let skipped = 0;
@@ -60,7 +89,7 @@ export async function GET(req: NextRequest) {
       );
       const step = steps[enrollment.currentStep];
 
-      // Suppression: DNC or unsubscribed leads leave the sequence.
+      // Suppression: DNC / unsubscribed / archived leads leave the cadence.
       if (lead.doNotContact || lead.unsubscribed || lead.status === "ARCHIVED") {
         await prisma.sequenceEnrollment.update({
           where: { id: enrollment.id },
@@ -88,8 +117,8 @@ export async function GET(req: NextRequest) {
         cqcRating: lead.cqcRating ?? "",
       };
       const ownerId = lead.assignedToId ?? null;
-
       const type = (step.type ?? "TASK").toUpperCase();
+      const stepLabel = step.label ?? type;
 
       if (type === "EMAIL") {
         const to = contact?.email ?? lead.email;
@@ -118,18 +147,17 @@ export async function GET(req: NextRequest) {
               leadId: lead.id,
               contactId: contact?.id ?? null,
               userId: ownerId,
-              subject: `[Sequence] ${subject}`,
-              body: result.sent
-                ? body
-                : `QUEUED (SMTP not configured): ${body}`,
+              subject: `[${enrollment.sequence.name}] ${subject}`,
+              body: result.sent ? body : `QUEUED (SMTP not configured): ${body}`,
             },
           });
           if (result.sent) emailsSent++;
+          await advanceToContacted(lead.id);
         } else {
-          // No email address — create a task to find one instead.
+          // No email — create a task to find one.
           await prisma.task.create({
             data: {
-              title: `Find email for ${lead.name} (sequence email step)`,
+              title: `Find email for ${lead.name} (${stepLabel})`,
               priority: "MEDIUM",
               leadId: lead.id,
               assignedToId: ownerId,
@@ -143,6 +171,34 @@ export async function GET(req: NextRequest) {
           where: { id: lead.id },
           data: { lastContactedAt: now },
         });
+      } else if (type === "BROCHURE") {
+        const hasAddress = !!(lead.addressLine1 && lead.postcode);
+        if (hasAddress) {
+          await prisma.task.create({
+            data: {
+              title: `[Cadence] Post brochure pack — ${lead.name}`,
+              description: `${step.note ?? "Post ScanVault brochure"}\n\n${lead.addressLine1}${lead.addressLine2 ? `, ${lead.addressLine2}` : ""}, ${lead.town ?? ""} ${lead.postcode}`,
+              priority: "MEDIUM",
+              leadId: lead.id,
+              contactId: contact?.id ?? null,
+              assignedToId: ownerId,
+              dueAt: now,
+            },
+          });
+          brochures++;
+          tasksCreated++;
+          await advanceToContacted(lead.id);
+        } else {
+          await prisma.activity.create({
+            data: {
+              type: "NOTE",
+              leadId: lead.id,
+              userId: ownerId,
+              subject: `[Cadence] Brochure skipped — no postal address`,
+              body: `${lead.name} has no address on file; the brochure step was skipped automatically.`,
+            },
+          });
+        }
       } else {
         // CALL / TASK / LINKEDIN — create a task for the owner.
         const labels: Record<string, string> = {
@@ -152,7 +208,7 @@ export async function GET(req: NextRequest) {
         };
         await prisma.task.create({
           data: {
-            title: `[Sequence: ${enrollment.sequence.name}] ${labels[type] ?? "Step"} — ${lead.name}`,
+            title: `[${enrollment.sequence.name}] ${stepLabel} — ${lead.name}`,
             description: step.note ?? undefined,
             priority: type === "CALL" ? "HIGH" : "MEDIUM",
             leadId: lead.id,
@@ -162,6 +218,7 @@ export async function GET(req: NextRequest) {
           },
         });
         tasksCreated++;
+        if (type === "CALL") await advanceToContacted(lead.id);
       }
 
       // Advance the enrollment.
@@ -196,9 +253,11 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({
+    newlyEnrolled,
     due: due.length,
     executed,
     emailsSent,
+    brochures,
     tasksCreated,
     completed,
     skipped,

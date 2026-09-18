@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { CADENCE } from "../lib/cadence";
 
 const prisma = new PrismaClient();
 
@@ -102,23 +103,40 @@ async function main() {
   }
   console.log(`${TEMPLATES.length} email templates ready`);
 
-  // Starter sequence
-  const seq = await prisma.sequence.findFirst({ where: { name: "Care Home Intro Drip" } });
+  // The canonical outreach cadence — every lead is auto-enrolled.
+  // Resolve template names to IDs so the runner can render them.
+  const tplByName = new Map(
+    (await prisma.emailTemplate.findMany()).map((t) => [t.name, t.id])
+  );
+  const cadenceSteps = CADENCE.map((s) => ({
+    order: s.order,
+    delayDays: s.delayDays,
+    type: s.type,
+    label: s.label,
+    subject: s.subject,
+    templateId: s.templateName ? tplByName.get(s.templateName) : undefined,
+    note: s.note,
+  }));
+
+  const seq = await prisma.sequence.findFirst({ where: { name: "ScanVault Outreach Cadence" } });
   if (!seq) {
     await prisma.sequence.create({
       data: {
-        name: "Care Home Intro Drip",
-        description: "Standard 4-touch outreach for newly imported care homes",
+        name: "ScanVault Outreach Cadence",
+        description:
+          "The standard workflow every lead follows: intro email → brochure post → follow-up call → follow-up email → final call → triage.",
         status: "ACTIVE",
-        steps: [
-          { delayDays: 0, type: "EMAIL", subject: "Freeing up {{name}}'s records — quick idea" },
-          { delayDays: 3, type: "CALL", note: "Intro call — ask for registered manager, mention CQC documentation" },
-          { delayDays: 7, type: "EMAIL", subject: "{{name}} and CQC documentation" },
-          { delayDays: 14, type: "TASK", note: "Final attempt — send breakup email or move to Nurture" },
-        ],
+        isDefault: true,
+        steps: cadenceSteps,
       },
     });
-    console.log("Starter sequence created");
+    console.log("Default outreach cadence created");
+  } else if (!seq.isDefault) {
+    await prisma.sequence.update({
+      where: { id: seq.id },
+      data: { isDefault: true, status: "ACTIVE", steps: cadenceSteps },
+    });
+    console.log("Outreach cadence set as default");
   }
 
   // Starter tags

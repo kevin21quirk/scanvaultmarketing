@@ -57,11 +57,13 @@ export default async function DashboardPage() {
     wonCount,
     activeCount,
     unenrichedCount,
-    inSequencesCount,
     noContactCount,
     weakRatingCount,
     ratingChanges,
     lastImport,
+    emailsSent,
+    brochuresPending,
+    callsDue,
   ] = await Promise.all([
     prisma.lead.count({ where: { status: { not: "ARCHIVED" } } }),
     prisma.lead.count({ where: { createdAt: { gte: weekAgo } } }),
@@ -107,7 +109,6 @@ export default async function DashboardPage() {
     prisma.lead.count({
       where: { companiesHouseNo: null, status: { not: "ARCHIVED" } },
     }),
-    prisma.sequenceEnrollment.count({ where: { status: "ACTIVE" } }),
     prisma.lead.count({
       where: { status: { not: "ARCHIVED" }, contacts: { none: {} } },
     }),
@@ -123,6 +124,13 @@ export default async function DashboardPage() {
     prisma.importJob.findFirst({
       orderBy: { createdAt: "desc" },
       select: { createdAt: true, imported: true, status: true, source: true },
+    }),
+    prisma.activity.count({ where: { type: "EMAIL" } }),
+    prisma.task.count({
+      where: { status: "OPEN", title: { contains: "brochure", mode: "insensitive" } },
+    }),
+    prisma.task.count({
+      where: { status: "OPEN", title: { contains: "call", mode: "insensitive" } },
     }),
   ]);
 
@@ -211,11 +219,12 @@ export default async function DashboardPage() {
         </Link>
       </div>
 
-      {/* the workflow — the obvious "how do we get leads" strip */}
+      {/* the cadence — the ONE workflow every lead follows */}
       <LeadEngineWorkflow
         scannedToday={newToday}
-        unenriched={unenrichedCount}
-        inSequences={inSequencesCount}
+        emailed={emailsSent}
+        brochuresPending={brochuresPending}
+        callsDue={callsDue}
         won={wonCount}
       />
 

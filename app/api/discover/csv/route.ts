@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { scoreLead } from "@/lib/scoring";
+import { autoEnroll } from "@/lib/cadence";
 
 type CsvRow = Record<string, string>;
 
@@ -80,7 +81,8 @@ export async function POST(req: NextRequest) {
           sourceDetail: "CSV upload",
           stageId: defaultStage?.id ?? null,
         };
-        await prisma.lead.create({ data: { ...mapped, score: scoreLead(mapped) } });
+        const lead = await prisma.lead.create({ data: { ...mapped, score: scoreLead(mapped) } });
+        await autoEnroll(lead.id);
         imported++;
       } catch (err) {
         failed++;

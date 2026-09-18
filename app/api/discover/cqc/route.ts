@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { searchLocations, cqcLocationToLead, type CqcSearchParams } from "@/lib/cqc";
 import { scoreLead } from "@/lib/scoring";
+import { autoEnroll } from "@/lib/cadence";
 
 // Preview: return matching locations without importing.
 export async function POST(req: NextRequest) {
@@ -80,6 +81,7 @@ export async function POST(req: NextRequest) {
               },
             });
             importedLeadIds.push(lead.id);
+            await autoEnroll(lead.id);
             imported++;
           } catch (err) {
             failed++;

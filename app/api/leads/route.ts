@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { leadSchema } from "@/lib/validation";
 import { scoreLead } from "@/lib/scoring";
+import { autoEnroll } from "@/lib/cadence";
 
 export async function POST(req: NextRequest) {
   const user = await getSession();
@@ -27,6 +28,7 @@ export async function POST(req: NextRequest) {
         score,
       },
     });
+    await autoEnroll(lead.id);
     return NextResponse.json(lead, { status: 201 });
   } catch (e) {
     if (e instanceof Error && e.name === "ZodError") {

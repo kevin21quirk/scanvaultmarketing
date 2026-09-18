@@ -5,8 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Radar,
-  Building2,
-  Workflow,
+  Mail,
+  Package,
+  Phone,
   Trophy,
   ChevronRight,
   Loader2,
@@ -15,19 +16,21 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-// The lead-acquisition workflow shown at the top of the dashboard.
-// Each step is a real action: scan the CQC register, enrich via
-// Companies House, push into sequences, then convert on the pipeline.
+// The lead-acquisition workflow shown at the top of the dashboard —
+// mirrors the ScanVault Outreach Cadence so what you see IS what runs:
+// Scan → Intro email → Brochure → Call → Convert.
 
 export function LeadEngineWorkflow({
   scannedToday,
-  unenriched,
-  inSequences,
+  emailed,
+  brochuresPending,
+  callsDue,
   won,
 }: {
   scannedToday: number;
-  unenriched: number;
-  inSequences: number;
+  emailed: number;
+  brochuresPending: number;
+  callsDue: number;
   won: number;
 }) {
   const router = useRouter();
@@ -52,7 +55,7 @@ export function LeadEngineWorkflow({
         const data = await res.json();
         if (res.ok) {
           toast.success(
-            `Scan complete — ${data.imported} new leads pulled in (${data.duplicates} refreshed)`
+            `Scan complete — ${data.imported} new leads pulled in & enrolled in the cadence`
           );
           setDone("scan");
           router.refresh();
@@ -67,95 +70,79 @@ export function LeadEngineWorkflow({
     });
   }
 
-  function runEnrich() {
-    setRunning("enrich");
-    setDone(null);
-    startTransition(async () => {
-      try {
-        const res = await fetch("/api/enrich/companies-house", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ batch: true, limit: 15 }),
-        });
-        const data = await res.json();
-        if (res.ok) {
-          if (data.processed === 0) {
-            toast.info(
-              data.alreadyEnriched > 0
-                ? `All ${data.alreadyEnriched} leads are already enriched — import more leads to enrich`
-                : "No leads yet — run a CQC scan or import leads first"
-            );
-          } else {
-            toast.success(
-              `Enriched ${data.enriched}/${data.processed} leads — directors added as contacts`
-            );
-            setDone("enrich");
-          }
-          router.refresh();
-        } else {
-          toast.error(data.error ?? "Enrichment failed");
-        }
-      } catch {
-        toast.error("Enrichment failed");
-      } finally {
-        setRunning(null);
-      }
-    });
-  }
-
   const steps = [
     {
       key: "scan",
       icon: Radar,
-      title: "1 · Scan",
-      desc: "Pull care homes from the CQC register",
+      title: "Scan",
+      desc: "Care homes pulled from the CQC register — auto-enrolled in the cadence",
       stat: `${scannedToday} today`,
       action: runScan,
       actionLabel: "Run scan now",
       accent: "from-red-600 to-red-800",
+      auto: "auto-enrols",
     },
     {
-      key: "enrich",
-      icon: Building2,
-      title: "2 · Enrich",
-      desc: "Add directors & contacts via Companies House",
-      stat: `${unenriched} awaiting`,
-      action: runEnrich,
-      actionLabel: "Enrich batch",
-      accent: "from-amber-500 to-amber-700",
-    },
-    {
-      key: "engage",
-      icon: Workflow,
-      title: "3 · Engage",
-      desc: "Drip sequences, campaigns & outreach",
-      stat: `${inSequences} in sequences`,
+      key: "email",
+      icon: Mail,
+      title: "Email",
+      desc: "Intro email sent on day 0 to every lead",
+      stat: `${emailed} sent`,
       href: "/sequences",
-      actionLabel: "Open sequences",
+      actionLabel: "View cadence",
       accent: "from-sky-500 to-sky-700",
+      auto: "day 0 · auto",
+    },
+    {
+      key: "brochure",
+      icon: Package,
+      title: "Brochure",
+      desc: "Brochure pack posted on day 1 when there's an address",
+      stat: `${brochuresPending} to post`,
+      href: "/tasks",
+      actionLabel: "Post queue",
+      accent: "from-amber-500 to-amber-700",
+      auto: "day 1 · auto",
+    },
+    {
+      key: "call",
+      icon: Phone,
+      title: "Call",
+      desc: "Follow-up call a week later, then final call day 21",
+      stat: `${callsDue} calls due`,
+      href: "/tasks",
+      actionLabel: "Call queue",
+      accent: "from-violet-500 to-violet-700",
+      auto: "day 7 · auto",
     },
     {
       key: "convert",
       icon: Trophy,
-      title: "4 · Convert",
-      desc: "Move leads through the pipeline to won",
+      title: "Convert",
+      desc: "Responded leads move through the pipeline to won",
       stat: `${won} won`,
       href: "/pipeline",
       actionLabel: "View pipeline",
       accent: "from-emerald-500 to-emerald-700",
+      auto: "kanban",
     },
   ];
 
   return (
     <div className="rounded-2xl border border-neutral-800 bg-gradient-to-br from-neutral-950 via-neutral-900 to-neutral-950 p-5 relative overflow-hidden">
       <div className="absolute -top-24 -right-24 w-72 h-72 bg-scanvault-red/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="flex items-center gap-2 mb-4 relative">
-        <Zap className="h-4 w-4 text-amber-400" />
-        <h2 className="text-sm font-bold uppercase tracking-widest text-neutral-300">
-          Lead Engine — how leads flow in
-        </h2>
+      <div className="flex items-center justify-between mb-4 relative">
+        <div className="flex items-center gap-2">
+          <Zap className="h-4 w-4 text-amber-400" />
+          <h2 className="text-sm font-bold uppercase tracking-widest text-neutral-300">
+            Outreach cadence — every lead follows this automatically
+          </h2>
+        </div>
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-600">
+          runs daily · no manual work until a call lands
+        </span>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 relative">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 relative">
         {steps.map((s, i) => (
           <div key={s.key} className="flex items-center gap-2">
             <div className="flex-1 rounded-xl border border-neutral-800 bg-neutral-950/80 p-4 hover:border-neutral-600 transition-colors">
@@ -165,11 +152,16 @@ export function LeadEngineWorkflow({
                 >
                   <s.icon className="h-4 w-4 text-white" />
                 </div>
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
+                <span className="text-[9px] font-semibold uppercase tracking-wider text-neutral-600">
+                  {s.auto}
+                </span>
+              </div>
+              <div className="mt-3 flex items-baseline gap-2">
+                <p className="text-sm font-bold text-white">{s.title}</p>
+                <span className="text-[11px] font-semibold text-amber-400">
                   {s.stat}
                 </span>
               </div>
-              <p className="mt-3 text-sm font-bold text-white">{s.title}</p>
               <p className="text-xs text-neutral-500 mt-0.5 leading-snug">
                 {s.desc}
               </p>

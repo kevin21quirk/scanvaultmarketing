@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { searchLocations, cqcLocationToLead } from "@/lib/cqc";
 import { scoreLead } from "@/lib/scoring";
+import { autoEnroll } from "@/lib/cadence";
 
 // GET /api/cron/cqc-sync — Vercel Cron endpoint.
 // Re-scans the CQC register, imports newly registered care homes and
@@ -92,6 +93,7 @@ export async function GET(req: NextRequest) {
                   },
                 });
                 newLeadIds.push(lead.id);
+                await autoEnroll(lead.id);
               }
               created++;
               continue;
