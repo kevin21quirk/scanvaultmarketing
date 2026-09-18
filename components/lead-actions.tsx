@@ -11,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Ban, Workflow, UserCheck, Archive } from "lucide-react";
+import { MoreHorizontal, Ban, Workflow, UserCheck, Archive, Building2 } from "lucide-react";
 import { toast } from "sonner";
 
 type UserOpt = { id: string; name: string };
@@ -62,6 +62,27 @@ export function LeadActions({
     });
   }
 
+  function enrich() {
+    startTransition(async () => {
+      const res = await fetch("/api/enrich/companies-house", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leadId }),
+      });
+      const data = await res.json();
+      if (res.ok && data.status === "enriched") {
+        toast.success(`Matched ${data.company} — ${data.contactsAdded} contact(s) added`);
+        router.refresh();
+      } else if (res.ok && data.status === "already_enriched") {
+        toast.info("Already enriched");
+      } else if (res.ok && data.status === "no_match") {
+        toast.info("No Companies House match found");
+      } else {
+        toast.error(data.error ?? "Enrichment failed");
+      }
+    });
+  }
+
   function archive() {
     patch({ status: "ARCHIVED" }, "Lead archived");
     router.push("/leads");
@@ -99,6 +120,10 @@ export function LeadActions({
               ))}
           </>
         )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={enrich}>
+          <Building2 className="h-4 w-4" /> Enrich via Companies House
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={() =>
