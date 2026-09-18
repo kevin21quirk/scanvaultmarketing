@@ -81,7 +81,9 @@ export function LeadEngineWorkflow({
         if (res.ok) {
           if (data.processed === 0) {
             toast.info(
-              "No leads to enrich yet — run a CQC scan or import leads first"
+              data.alreadyEnriched > 0
+                ? `All ${data.alreadyEnriched} leads are already enriched — import more leads to enrich`
+                : "No leads yet — run a CQC scan or import leads first"
             );
           } else {
             toast.success(

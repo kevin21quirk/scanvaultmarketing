@@ -128,6 +128,10 @@ export async function POST(req: NextRequest) {
         select: { id: true },
       });
 
+      const alreadyEnriched = await prisma.lead.count({
+        where: { companiesHouseNo: { not: null } },
+      });
+
       const results = [];
       for (const lead of leads) {
         try {
@@ -146,6 +150,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         processed: leads.length,
         enriched: results.filter((r) => r.status === "enriched").length,
+        alreadyEnriched,
         results,
       });
     }
