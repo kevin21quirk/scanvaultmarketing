@@ -3,8 +3,17 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { cookies } from "next/headers";
 
+function getAppUrl() {
+  const raw =
+    process.env.APP_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    "http://localhost:3000";
+  return raw.replace(/\/$/, "");
+}
+
 export async function GET(req: NextRequest) {
-  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
+  const appUrl = getAppUrl();
   const user = await getSession();
   if (!user) return NextResponse.redirect(`${appUrl}/login`);
 
