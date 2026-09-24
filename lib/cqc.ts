@@ -114,9 +114,18 @@ export async function searchLocations(
   };
 }
 
+/** Fetch all locations belonging to a specific CQC provider ID (e.g. "1-10000644"). */
+export async function getProviderLocations(providerId: string): Promise<CqcLocation[]> {
+  const url = new URL(`${BASE}/public/v1/providers/${providerId}/locations`);
+  url.searchParams.set("perPage", "500");
+  const res = await fetchUrl(url.toString());
+  const data = (await res.json()) as { locations?: CqcLocation[] };
+  return data.locations ?? [];
+}
+
 /**
- * Search providers by name (e.g. "Barchester Healthcare") then return
- * all their care-home locations. Used when the user types in the Search Term box.
+ * Search providers by name then return all their care-home locations.
+ * If the term looks like a CQC provider ID (e.g. "1-10000644") uses direct lookup.
  */
 async function searchLocationsByProviderName(
   name: string,
@@ -124,55 +133,85 @@ async function searchLocationsByProviderName(
   page: number,
   perPage: number
 ): Promise<{ locations: CqcLocation[]; total: number; totalPages: number }> {
-  // Fetch providers and filter by name client-side (up to 5 pages = 500 providers)
-  const allProviders: CqcProvider[] = [];
-  const nameLower = name.toLowerCase();
 
-  for (let p = 1; p <= 5; p++) {
-    const url = new URL(`${BASE}/public/v1/providers`);
-    url.searchParams.set("page", String(p));
-    url.searchParams.set("perPage", "100");
-    const res = await fetchUrl(url.toString());
-    const data = (await res.json()) as CqcSearchResponse;
-    const batch = (data.providers ?? []) as CqcProvider[];
-    allProviders.push(...batch.filter((pr) => pr.providerName?.toLowerCase().includes(nameLower)));
-    if (batch.length < 100) break; // last page
+  // ── Direct provider ID lookup (e.g. "1-10000644") — instant ────────────
+  const trimmed = name.trim();
+  if (/^\d+-\d+$/.test(trimmed)) {
+    const locations = await getProviderLocations(trimmed);
+    const filtered = careHomeOnly ? locations.filter((l) => l.careHome === "Y") : locations;
+    const start = (page - 1) * perPage;
+    return {
+      locations: filtered.slice(start, start + perPage),
+      total: filtered.length,
+      totalPages: Math.ceil(filtered.length / perPage),
+    };
   }
 
-  if (allProviders.length === 0) {
+  // ── Name search: fetch all providers in parallel batches ────────────────
+  const nameLower = name.toLowerCase();
+  const PER_PAGE = 500;
+  const BATCH = 8; // concurrent requests per round
+
+  // First request to get total count
+  const firstUrl = new URL(`${BASE}/public/v1/providers`);
+  firstUrl.searchParams.set("page", "1");
+  firstUrl.searchParams.set("perPage", String(PER_PAGE));
+  const firstRes = await fetchUrl(firstUrl.toString());
+  const firstData = (await firstRes.json()) as CqcSearchResponse;
+  const totalProviderPages = Math.ceil((firstData.total ?? 0) / PER_PAGE);
+
+  const allProviders: CqcProvider[] = [...((firstData.providers ?? []) as CqcProvider[])];
+
+  // Fetch remaining pages in parallel batches
+  for (let start = 2; start <= totalProviderPages; start += BATCH) {
+    const batchPages = Array.from(
+      { length: Math.min(BATCH, totalProviderPages - start + 1) },
+      (_, i) => start + i
+    );
+    const results = await Promise.all(
+      batchPages.map(async (p) => {
+        const url = new URL(`${BASE}/public/v1/providers`);
+        url.searchParams.set("page", String(p));
+        url.searchParams.set("perPage", String(PER_PAGE));
+        const res = await fetchUrl(url.toString());
+        const data = (await res.json()) as CqcSearchResponse;
+        return (data.providers ?? []) as CqcProvider[];
+      })
+    );
+    allProviders.push(...results.flat());
+  }
+
+  // Filter providers by name
+  const matched = allProviders.filter((pr) =>
+    pr.providerName?.toLowerCase().includes(nameLower)
+  );
+
+  if (matched.length === 0) {
     return { locations: [], total: 0, totalPages: 0 };
   }
 
-  // Fetch locations for matched providers (up to first 10 providers to avoid rate limits)
-  const locationIds: string[] = [];
-  for (const provider of allProviders.slice(0, 10)) {
-    try {
-      const detail = await getProvider(provider.providerId);
-      if ((detail as unknown as { locationIds?: string[] }).locationIds) {
-        locationIds.push(...((detail as unknown as { locationIds: string[] }).locationIds));
+  // Fetch locations for matched providers (cap at 5 to stay within timeout)
+  const allLocations: CqcLocation[] = [];
+  await Promise.all(
+    matched.slice(0, 5).map(async (pr) => {
+      try {
+        const locs = await getProviderLocations(pr.providerId);
+        allLocations.push(...locs);
+      } catch {
+        // skip
       }
-    } catch {
-      // skip failing providers
-    }
-  }
+    })
+  );
 
-  // Fetch location details for each ID
-  const locationDetails: CqcLocation[] = [];
-  for (const locId of locationIds.slice(0, 200)) {
-    try {
-      const loc = await getLocation(locId);
-      if (careHomeOnly && loc.careHome !== "Y") continue;
-      locationDetails.push(loc);
-    } catch {
-      // skip
-    }
-  }
+  const filtered = careHomeOnly
+    ? allLocations.filter((l) => l.careHome === "Y")
+    : allLocations;
 
   const start = (page - 1) * perPage;
   return {
-    locations: locationDetails.slice(start, start + perPage),
-    total: locationDetails.length,
-    totalPages: Math.ceil(locationDetails.length / perPage),
+    locations: filtered.slice(start, start + perPage),
+    total: filtered.length,
+    totalPages: Math.ceil(filtered.length / perPage),
   };
 }
 

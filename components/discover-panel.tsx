@@ -298,13 +298,16 @@ export function DiscoverPanel() {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs">Provider / group name</Label>
+                <Label className="text-xs">Provider / group name or CQC ID</Label>
                 <Input
                   value={filters.searchTerm}
                   onChange={(e) => set("searchTerm", e.target.value)}
-                  placeholder="e.g. Barchester, HC-One, Anchor"
+                  placeholder="e.g. Barchester  or  1-10000644"
                 />
-                <p className="text-[10px] text-muted-foreground">Searches provider groups. Leave blank to search by region / postcode.</p>
+                <p className="text-[10px] text-muted-foreground">
+                  Enter a group name to find all their homes, or paste the CQC provider ID
+                  (from the URL on cqc.org.uk) for instant results.
+                </p>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Region</Label>
