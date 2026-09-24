@@ -298,12 +298,13 @@ export function DiscoverPanel() {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs">Search term</Label>
+                <Label className="text-xs">Provider / group name</Label>
                 <Input
                   value={filters.searchTerm}
                   onChange={(e) => set("searchTerm", e.target.value)}
-                  placeholder="e.g. Barchester, Meadow View"
+                  placeholder="e.g. Barchester, HC-One, Anchor"
                 />
+                <p className="text-[10px] text-muted-foreground">Searches provider groups. Leave blank to search by region / postcode.</p>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Region</Label>
