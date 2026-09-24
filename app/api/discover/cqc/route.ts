@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
-import { searchLocations, cqcLocationToLead, type CqcSearchParams } from "@/lib/cqc";
+import { searchLocations, getLocation, cqcLocationToLead, type CqcSearchParams } from "@/lib/cqc";
 import { scoreLead } from "@/lib/scoring";
 import { autoEnroll } from "@/lib/cadence";
 
@@ -52,10 +52,17 @@ export async function POST(req: NextRequest) {
 
         for (const loc of batch.locations) {
           if (!loc.locationId) continue;
-          const mapped = cqcLocationToLead(loc);
+          // Summary only has id/name/postcode — fetch full detail for real data
+          let fullLoc = loc;
           try {
-            const existing = await prisma.lead.findUnique({
-              where: { cqcLocationId: loc.locationId },
+            fullLoc = await getLocation(loc.locationId);
+          } catch {
+            // use summary if detail fetch fails
+          }
+          const mapped = cqcLocationToLead(fullLoc);
+          try {
+              const existing = await prisma.lead.findUnique({
+              where: { cqcLocationId: fullLoc.locationId },
             });
             if (existing) {
               // Refresh CQC-sourced fields on existing records
@@ -86,7 +93,7 @@ export async function POST(req: NextRequest) {
           } catch (err) {
             failed++;
             if (errors.length < 10) {
-              errors.push(`${loc.locationName}: ${err instanceof Error ? err.message : "error"}`);
+              errors.push(`${fullLoc.locationName}: ${err instanceof Error ? err.message : "error"}`);
             }
           }
         }

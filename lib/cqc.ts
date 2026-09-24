@@ -109,11 +109,29 @@ export async function searchLocations(
 
 /** Fetch all locations belonging to a specific CQC provider ID (e.g. "1-10000644"). */
 export async function getProviderLocations(providerId: string): Promise<CqcLocation[]> {
-  const url = new URL(`${BASE}/public/v1/providers/${providerId}/locations`);
-  url.searchParams.set("perPage", "500");
-  const res = await fetchUrl(url.toString());
-  const data = (await res.json()) as { locations?: CqcLocation[] };
-  return data.locations ?? [];
+  // NOTE: this endpoint accepts no query params — returns all locations in one response
+  const res = await fetchUrl(`${BASE}/public/v1/providers/${providerId}/locations`);
+  const data = (await res.json()) as {
+    locations?: CqcLocation[];
+    locationIds?: string[];
+  };
+
+  if (data.locations) return data.locations;
+
+  // Some responses return IDs only — fetch full details for each
+  if (data.locationIds) {
+    const locs: CqcLocation[] = [];
+    for (const id of data.locationIds.slice(0, 500)) {
+      try {
+        locs.push(await getLocation(id));
+      } catch {
+        // skip failed fetches
+      }
+    }
+    return locs;
+  }
+
+  return [];
 }
 
 /**
