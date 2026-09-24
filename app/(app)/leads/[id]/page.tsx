@@ -25,6 +25,7 @@ import { TasksPanel } from "@/components/tasks-panel";
 import { formatDate, formatDateTime, formatCurrency, leadAddress } from "@/lib/utils";
 import { scoreLabel } from "@/lib/scoring";
 import { CadenceStepper } from "@/components/cadence-stepper";
+import { OutreachCard } from "@/components/outreach-card";
 
 export const dynamic = "force-dynamic";
 
@@ -291,8 +292,21 @@ export default async function LeadDetailPage({
           <TasksPanel leadId={lead.id} tasks={JSON.parse(JSON.stringify(lead.tasks))} users={users} />
         </div>
 
-        {/* Right column — activity timeline */}
-        <div className="lg:col-span-2">
+        {/* Right column — outreach templates + activity timeline */}
+        <div className="lg:col-span-2 space-y-6">
+          <OutreachCard
+            lead={{
+              name: lead.name,
+              cqcRating: lead.cqcRating,
+              beds: lead.beds,
+              careTypes: lead.careTypes,
+              region: lead.region,
+              primaryContactFirstName:
+                lead.contacts.find((c) => c.isPrimary)?.firstName ??
+                lead.contacts[0]?.firstName ??
+                null,
+            }}
+          />
           <ActivityPanel
             leadId={lead.id}
             leadName={lead.name}
@@ -302,7 +316,7 @@ export default async function LeadDetailPage({
             }))}
             activities={JSON.parse(JSON.stringify(lead.activities))}
           />
-        </div>
+        </div>{/* end right column */}
       </div>
     </div>
   );

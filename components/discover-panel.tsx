@@ -29,6 +29,9 @@ import {
   BedDouble,
   Star,
   Linkedin,
+  Link2,
+  Building2,
+  User,
 } from "lucide-react";
 import { UK_REGIONS, CQC_RATINGS } from "@/lib/constants";
 import { toast } from "sonner";
@@ -70,6 +73,82 @@ export function DiscoverPanel() {
   const [csvImporting, setCsvImporting] = useState(false);
   const linkedinFileRef = useRef<HTMLInputElement>(null);
   const [linkedinImporting, setLinkedinImporting] = useState(false);
+
+  // LinkedIn URL quick-add
+  const [liUrl, setLiUrl] = useState("");
+  const [liParsed, setLiParsed] = useState<{
+    type: "company" | "person" | null;
+    slug: string;
+    name: string;
+    firstName: string;
+    lastName: string;
+    jobTitle: string;
+    company: string;
+  }>({ type: null, slug: "", name: "", firstName: "", lastName: "", jobTitle: "", company: "" });
+  const [liCreating, setLiCreating] = useState(false);
+
+  function parseLinkedInUrl(url: string) {
+    const companyMatch = url.match(/linkedin\.com\/company\/([^/?#]+)/i);
+    const personMatch = url.match(/linkedin\.com\/in\/([^/?#]+)/i);
+    if (companyMatch) {
+      const slug = companyMatch[1].replace(/\/$/, "");
+      const name = slug.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+      setLiParsed((p) => ({ ...p, type: "company", slug, name }));
+    } else if (personMatch) {
+      const slug = personMatch[1].replace(/\/$/, "");
+      setLiParsed((p) => ({ ...p, type: "person", slug, name: "" }));
+    } else {
+      setLiParsed((p) => ({ ...p, type: null }));
+    }
+  }
+
+  async function createFromLinkedIn() {
+    setLiCreating(true);
+    try {
+      const leadName =
+        liParsed.type === "company"
+          ? liParsed.name || liParsed.slug
+          : liParsed.company || `${liParsed.firstName} ${liParsed.lastName}`.trim() || liParsed.slug;
+
+      const res = await fetch("/api/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: leadName,
+          source: "LINKEDIN_SALES_NAV",
+          type: "OTHER",
+          linkedinUrl: liUrl,
+        }),
+      });
+      const lead = await res.json();
+
+      // For a person URL, also create the contact record
+      if (res.ok && liParsed.type === "person" && liParsed.firstName) {
+        await fetch("/api/contacts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            leadId: lead.id,
+            firstName: liParsed.firstName,
+            lastName: liParsed.lastName || null,
+            jobTitle: liParsed.jobTitle || null,
+            linkedIn: liUrl,
+            isPrimary: true,
+          }),
+        });
+      }
+
+      if (res.ok) {
+        router.push(`/leads/${lead.id}`);
+      } else {
+        toast.error(lead.error || "Failed to create lead");
+        setLiCreating(false);
+      }
+    } catch {
+      toast.error("Something went wrong");
+      setLiCreating(false);
+    }
+  }
 
   const set = (k: string, v: string | boolean) => setFilters((f) => ({ ...f, [k]: v }));
 
@@ -196,11 +275,14 @@ export function DiscoverPanel() {
         <TabsTrigger value="cqc">
           <Radar className="h-4 w-4 mr-1.5" /> CQC Register
         </TabsTrigger>
+        <TabsTrigger value="linkedin-url">
+          <Link2 className="h-4 w-4 mr-1.5" /> LinkedIn URL
+        </TabsTrigger>
         <TabsTrigger value="csv">
           <FileUp className="h-4 w-4 mr-1.5" /> CSV Import
         </TabsTrigger>
         <TabsTrigger value="linkedin">
-          <Linkedin className="h-4 w-4 mr-1.5" /> LinkedIn Sales Nav
+          <Linkedin className="h-4 w-4 mr-1.5" /> LinkedIn CSV
         </TabsTrigger>
       </TabsList>
 
@@ -392,6 +474,124 @@ export function DiscoverPanel() {
                 <code>.env</code> (<code>CQC_API_KEY</code>) for higher rate limits.
               </p>
             </div>
+          </CardContent>
+        </Card>
+      </TabsContent>
+
+      {/* ── LinkedIn URL quick-add ─────────────────────────────────────── */}
+      <TabsContent value="linkedin-url" className="space-y-4">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Linkedin className="h-4 w-4 text-[#0A66C2]" /> Add lead from LinkedIn URL
+            </CardTitle>
+            <CardDescription>
+              Copy a company or person URL from LinkedIn Sales Navigator (or regular LinkedIn)
+              and paste it below. ScanVault will create the lead and you can enrich it from
+              Companies House &amp; CQC on the lead detail page.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-1.5">
+              <Label>LinkedIn URL</Label>
+              <Input
+                placeholder="https://www.linkedin.com/company/sunrise-care-homes  or  /in/johndoe"
+                value={liUrl}
+                onChange={(e) => {
+                  setLiUrl(e.target.value);
+                  parseLinkedInUrl(e.target.value);
+                }}
+              />
+              {liUrl && !liParsed.type && (
+                <p className="text-xs text-amber-600">
+                  Paste a linkedin.com/company/… or linkedin.com/in/… URL.
+                </p>
+              )}
+            </div>
+
+            {liParsed.type === "company" && (
+              <div className="space-y-3 rounded-lg border bg-blue-50 border-blue-100 p-4">
+                <div className="flex items-center gap-2 text-sm font-medium text-blue-800">
+                  <Building2 className="h-4 w-4" /> Company / Care Home
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Company name (edit if needed)</Label>
+                  <Input
+                    value={liParsed.name}
+                    onChange={(e) => setLiParsed((p) => ({ ...p, name: e.target.value }))}
+                    className="bg-white"
+                  />
+                </div>
+                <p className="text-xs text-blue-700">
+                  After creating, open the lead and use the <strong>Companies House</strong> and <strong>CQC</strong> enrich buttons to fill in address, phone, beds, and rating automatically.
+                </p>
+              </div>
+            )}
+
+            {liParsed.type === "person" && (
+              <div className="space-y-3 rounded-lg border bg-blue-50 border-blue-100 p-4">
+                <div className="flex items-center gap-2 text-sm font-medium text-blue-800">
+                  <User className="h-4 w-4" /> Person — their company becomes the lead
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">First name *</Label>
+                    <Input
+                      required
+                      value={liParsed.firstName}
+                      onChange={(e) => setLiParsed((p) => ({ ...p, firstName: e.target.value }))}
+                      className="bg-white"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Last name</Label>
+                    <Input
+                      value={liParsed.lastName}
+                      onChange={(e) => setLiParsed((p) => ({ ...p, lastName: e.target.value }))}
+                      className="bg-white"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Job title</Label>
+                    <Input
+                      value={liParsed.jobTitle}
+                      onChange={(e) => setLiParsed((p) => ({ ...p, jobTitle: e.target.value }))}
+                      placeholder="e.g. Registered Manager"
+                      className="bg-white"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Their company / care home *</Label>
+                    <Input
+                      required
+                      value={liParsed.company}
+                      onChange={(e) => setLiParsed((p) => ({ ...p, company: e.target.value }))}
+                      placeholder="e.g. Sunrise Care Home"
+                      className="bg-white"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <Button
+              disabled={
+                !liParsed.type ||
+                liCreating ||
+                (liParsed.type === "company" && !liParsed.name) ||
+                (liParsed.type === "person" && !liParsed.firstName)
+              }
+              onClick={createFromLinkedIn}
+              className="w-full"
+            >
+              {liCreating ? (
+                <><Loader2 className="h-4 w-4 animate-spin" /> Creating lead…</>
+              ) : (
+                "Add to ScanVault →"
+              )}
+            </Button>
           </CardContent>
         </Card>
       </TabsContent>
