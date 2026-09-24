@@ -72,6 +72,11 @@ export async function searchLocations(
 
   const res = await fetch(url.toString(), { headers: headers(), cache: "no-store" });
   if (!res.ok) {
+    if (res.status === 401 || res.status === 403 || res.status === 502) {
+      throw new Error(
+        "CQC API key required. Sign up free at api-portal.service.cqc.org.uk, subscribe to the Syndication API, and add your key as CQC_API_KEY in your environment variables."
+      );
+    }
     const text = await res.text();
     throw new Error(`CQC API error ${res.status}: ${text.slice(0, 300)}`);
   }
