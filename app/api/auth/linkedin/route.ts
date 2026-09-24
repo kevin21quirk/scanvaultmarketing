@@ -9,12 +9,12 @@ export async function GET() {
   const clientId = process.env.LINKEDIN_CLIENT_ID;
   if (!clientId) {
     // Redirect back with an error flag so the UI can surface it
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
     return NextResponse.redirect(`${appUrl}/settings?linkedin=not_configured`);
   }
 
   const state = crypto.randomUUID();
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
   const redirectUri = `${appUrl}/api/auth/linkedin/callback`;
 
   const params = new URLSearchParams({

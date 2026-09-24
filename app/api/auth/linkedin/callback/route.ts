@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { cookies } from "next/headers";
 
 export async function GET(req: NextRequest) {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
   const user = await getSession();
   if (!user) return NextResponse.redirect(`${appUrl}/login`);
 
