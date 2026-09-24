@@ -336,14 +336,7 @@ export function DiscoverPanel() {
                   placeholder="e.g. Kent, Manchester"
                 />
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Postcode area</Label>
-                <Input
-                  value={filters.postalCode}
-                  onChange={(e) => set("postalCode", e.target.value)}
-                  placeholder="e.g. ME14, B15"
-                />
-              </div>
+
               <div className="space-y-1.5">
                 <Label className="text-xs">CQC rating</Label>
                 <Select

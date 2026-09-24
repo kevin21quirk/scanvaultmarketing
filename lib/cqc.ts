@@ -39,6 +39,8 @@ type CqcSearchResponse = {
   providers?: Array<{ providerId: string; providerName: string }>;
 };
 
+const PARTNER_CODE = process.env.CQC_PARTNER_CODE || "ScanVault";
+
 function headers(): HeadersInit {
   const key = process.env.CQC_API_KEY;
   return key
@@ -46,14 +48,21 @@ function headers(): HeadersInit {
     : { Accept: "application/json" };
 }
 
+// Add partnerCode — required by the new API
+function withPartner(url: URL): URL {
+  url.searchParams.set("partnerCode", PARTNER_CODE);
+  return url;
+}
+
 export type CqcSearchParams = {
   careHome?: boolean;
   region?: string;
   localAuthority?: string;
+  /** NOTE: postalCode is not supported by the new CQC API — kept for UI compat, ignored */
   postalCode?: string;
   /** Provider/group name search — routes through /providers endpoint */
   searchTerm?: string;
-  /** NOTE: overallRating is no longer supported by the new CQC API */
+  /** Overall rating filter — passed server-side (valid param on /locations) */
   overallRating?: string;
   page?: number;
   perPage?: number;
@@ -78,37 +87,30 @@ export async function searchLocations(
 ): Promise<{ locations: CqcLocation[]; total: number; totalPages: number }> {
 
   // ── Provider name search ────────────────────────────────────────────────
-  // The /locations endpoint no longer accepts a searchTerm parameter.
-  // For text searches (e.g. "Barchester"), we search /providers instead,
-  // then fetch the locations that belong to matched providers.
+  // The /locations endpoint has no name/text search. For text searches
+  // (e.g. "Barchester"), scan /providers client-side and fetch their locations.
   if (params.searchTerm) {
-    return searchLocationsByProviderName(params.searchTerm, params.careHome, params.page ?? 1, params.perPage ?? 25);
+    return searchLocationsByProviderName(params.searchTerm, params.careHome, params.overallRating, params.page ?? 1, params.perPage ?? 25);
   }
 
-  // ── Geographic search ───────────────────────────────────────────────────
-  // Only send parameters the new API actually accepts.
+  // ── Geographic / rating search ──────────────────────────────────────────
+  // Valid params on /locations: careHome, region, localAuthority, overallRating,
+  // constituency, regulatedActivity, gacServiceTypeDescription, page, perPage, partnerCode.
+  // postalCode is NOT supported — removed.
   const url = new URL(`${BASE}/public/v1/locations`);
   if (params.careHome !== undefined) url.searchParams.set("careHome", params.careHome ? "Y" : "N");
   if (params.region) url.searchParams.set("region", params.region);
   if (params.localAuthority) url.searchParams.set("localAuthority", params.localAuthority);
-  if (params.postalCode) url.searchParams.set("postalCode", params.postalCode);
-  // NOTE: overallRating is not accepted by the new API — filter client-side below
+  if (params.overallRating) url.searchParams.set("overallRating", params.overallRating);
   url.searchParams.set("page", String(params.page ?? 1));
   url.searchParams.set("perPage", String(Math.min(params.perPage ?? 100, 500)));
+  withPartner(url);
 
   const res = await fetchUrl(url.toString());
   const data = (await res.json()) as CqcSearchResponse;
 
-  let locations = data.locations ?? [];
-  // Client-side rating filter since the API no longer supports it server-side
-  if (params.overallRating) {
-    locations = locations.filter(
-      (l) => l.currentRatings?.overall?.rating === params.overallRating
-    );
-  }
-
   return {
-    locations,
+    locations: data.locations ?? [],
     total: data.total ?? 0,
     totalPages: data.totalPages ?? 1,
   };
@@ -118,6 +120,7 @@ export async function searchLocations(
 export async function getProviderLocations(providerId: string): Promise<CqcLocation[]> {
   const url = new URL(`${BASE}/public/v1/providers/${providerId}/locations`);
   url.searchParams.set("perPage", "500");
+  withPartner(url);
   const res = await fetchUrl(url.toString());
   const data = (await res.json()) as { locations?: CqcLocation[] };
   return data.locations ?? [];
@@ -130,15 +133,23 @@ export async function getProviderLocations(providerId: string): Promise<CqcLocat
 async function searchLocationsByProviderName(
   name: string,
   careHomeOnly: boolean | undefined,
+  overallRating: string | undefined,
   page: number,
   perPage: number
 ): Promise<{ locations: CqcLocation[]; total: number; totalPages: number }> {
 
-  // ── Direct provider ID lookup (e.g. "1-10000644") — instant ────────────
+  function applyFilters(locs: CqcLocation[]) {
+    let result = locs;
+    if (careHomeOnly) result = result.filter((l) => l.careHome === "Y");
+    if (overallRating) result = result.filter((l) => l.currentRatings?.overall?.rating === overallRating);
+    return result;
+  }
+
+  // ── Direct provider ID lookup (e.g. "1-102642955") — instant ────────────
   const trimmed = name.trim();
   if (/^\d+-\d+$/.test(trimmed)) {
     const locations = await getProviderLocations(trimmed);
-    const filtered = careHomeOnly ? locations.filter((l) => l.careHome === "Y") : locations;
+    const filtered = applyFilters(locations);
     const start = (page - 1) * perPage;
     return {
       locations: filtered.slice(start, start + perPage),
@@ -152,25 +163,17 @@ async function searchLocationsByProviderName(
   const PER_PAGE = 500;
   const BATCH = 8;
 
-  // First request — use totalPages if returned, else derive from total
   const firstUrl = new URL(`${BASE}/public/v1/providers`);
   firstUrl.searchParams.set("page", "1");
   firstUrl.searchParams.set("perPage", String(PER_PAGE));
+  withPartner(firstUrl);
   const firstRes = await fetchUrl(firstUrl.toString());
   const firstData = (await firstRes.json()) as CqcSearchResponse;
-  // Log what the API actually returned so we can debug
-  console.log("CQC providers first page:", {
-    total: firstData.total,
-    totalPages: firstData.totalPages,
-    providerCount: firstData.providers?.length,
-    sampleProvider: firstData.providers?.[0],
-  });
   const totalProviderPages =
     firstData.totalPages ?? Math.ceil((firstData.total ?? 0) / PER_PAGE) ?? 60;
 
   const allProviders: CqcProvider[] = [...((firstData.providers ?? []) as CqcProvider[])];
 
-  // Fetch remaining pages in parallel batches
   for (let start = 2; start <= totalProviderPages; start += BATCH) {
     const batchPages = Array.from(
       { length: Math.min(BATCH, totalProviderPages - start + 1) },
@@ -181,6 +184,7 @@ async function searchLocationsByProviderName(
         const url = new URL(`${BASE}/public/v1/providers`);
         url.searchParams.set("page", String(p));
         url.searchParams.set("perPage", String(PER_PAGE));
+        withPartner(url);
         const res = await fetchUrl(url.toString());
         const data = (await res.json()) as CqcSearchResponse;
         return (data.providers ?? []) as CqcProvider[];
@@ -189,17 +193,14 @@ async function searchLocationsByProviderName(
     allProviders.push(...results.flat());
   }
 
-  // Filter providers by name — handle both providerName and name field variants
-  const matched = allProviders.filter((pr) => {
-    const pName = (pr.providerName ?? (pr as unknown as Record<string, string>).name ?? "").toLowerCase();
-    return pName.includes(nameLower);
-  });
+  const matched = allProviders.filter((pr) =>
+    (pr.providerName ?? "").toLowerCase().includes(nameLower)
+  );
 
   if (matched.length === 0) {
     return { locations: [], total: 0, totalPages: 0 };
   }
 
-  // Fetch locations for matched providers (cap at 5 to stay within timeout)
   const allLocations: CqcLocation[] = [];
   await Promise.all(
     matched.slice(0, 5).map(async (pr) => {
@@ -212,10 +213,7 @@ async function searchLocationsByProviderName(
     })
   );
 
-  const filtered = careHomeOnly
-    ? allLocations.filter((l) => l.careHome === "Y")
-    : allLocations;
-
+  const filtered = applyFilters(allLocations);
   const start = (page - 1) * perPage;
   return {
     locations: filtered.slice(start, start + perPage),
@@ -225,7 +223,9 @@ async function searchLocationsByProviderName(
 }
 
 export async function getLocation(locationId: string): Promise<CqcLocation> {
-  const res = await fetchUrl(`${BASE}/public/v1/locations/${locationId}`);
+  const url = new URL(`${BASE}/public/v1/locations/${locationId}`);
+  withPartner(url);
+  const res = await fetchUrl(url.toString());
   return res.json();
 }
 
@@ -243,7 +243,9 @@ export type CqcProvider = {
 };
 
 export async function getProvider(providerId: string): Promise<CqcProvider> {
-  const res = await fetchUrl(`${BASE}/public/v1/providers/${providerId}`);
+  const url = new URL(`${BASE}/public/v1/providers/${providerId}`);
+  withPartner(url);
+  const res = await fetchUrl(url.toString());
   return res.json();
 }
 
@@ -256,6 +258,7 @@ export async function searchProviders(params: {
   if (params.region) url.searchParams.set("region", params.region);
   url.searchParams.set("page", String(params.page ?? 1));
   url.searchParams.set("perPage", String(params.perPage ?? 100));
+  withPartner(url);
   const res = await fetchUrl(url.toString());
   const data = (await res.json()) as CqcSearchResponse;
   return {
