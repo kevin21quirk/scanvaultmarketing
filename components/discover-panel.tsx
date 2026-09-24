@@ -28,6 +28,7 @@ import {
   Phone,
   BedDouble,
   Star,
+  Linkedin,
 } from "lucide-react";
 import { UK_REGIONS, CQC_RATINGS } from "@/lib/constants";
 import { toast } from "sonner";
@@ -67,6 +68,8 @@ export function DiscoverPanel() {
   } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [csvImporting, setCsvImporting] = useState(false);
+  const linkedinFileRef = useRef<HTMLInputElement>(null);
+  const [linkedinImporting, setLinkedinImporting] = useState(false);
 
   const set = (k: string, v: string | boolean) => setFilters((f) => ({ ...f, [k]: v }));
 
@@ -155,6 +158,39 @@ export function DiscoverPanel() {
     });
   }
 
+  async function onLinkedinCsv(file: File) {
+    setLinkedinImporting(true);
+    Papa.parse<Record<string, string>>(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async (parsed) => {
+        try {
+          const res = await fetch("/api/discover/linkedin-csv", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ rows: parsed.data }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "Import failed");
+          const modeLabel = data.mode === "lead" ? "lead list" : "account list";
+          toast.success(
+            `LinkedIn ${modeLabel}: ${data.imported} imported, ${data.duplicates} already existed`
+          );
+          router.refresh();
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : "LinkedIn CSV import failed");
+        } finally {
+          setLinkedinImporting(false);
+          if (linkedinFileRef.current) linkedinFileRef.current.value = "";
+        }
+      },
+      error: () => {
+        toast.error("Could not parse CSV");
+        setLinkedinImporting(false);
+      },
+    });
+  }
+
   return (
     <Tabs defaultValue="cqc">
       <TabsList>
@@ -163,6 +199,9 @@ export function DiscoverPanel() {
         </TabsTrigger>
         <TabsTrigger value="csv">
           <FileUp className="h-4 w-4 mr-1.5" /> CSV Import
+        </TabsTrigger>
+        <TabsTrigger value="linkedin">
+          <Linkedin className="h-4 w-4 mr-1.5" /> LinkedIn Sales Nav
         </TabsTrigger>
       </TabsList>
 
@@ -395,6 +434,63 @@ export function DiscoverPanel() {
                 Up to 5,000 rows · duplicates skipped automatically
               </p>
             </button>
+          </CardContent>
+        </Card>
+      </TabsContent>
+
+      <TabsContent value="linkedin" className="space-y-4">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Linkedin className="h-4 w-4 text-[#0A66C2]" /> Import from LinkedIn Sales Navigator
+            </CardTitle>
+            <CardDescription>
+              Export a lead list or account list from Sales Navigator and upload it here. Contacts are
+              created automatically for lead-list exports; company/account exports create leads directly.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <input
+              ref={linkedinFileRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) onLinkedinCsv(f);
+              }}
+            />
+            <button
+              onClick={() => linkedinFileRef.current?.click()}
+              disabled={linkedinImporting}
+              className="w-full rounded-xl border-2 border-dashed border-[#0A66C2]/40 hover:border-[#0A66C2] transition-colors p-10 text-center"
+            >
+              {linkedinImporting ? (
+                <Loader2 className="h-8 w-8 animate-spin mx-auto text-[#0A66C2]" />
+              ) : (
+                <Linkedin className="h-8 w-8 mx-auto text-[#0A66C2]" />
+              )}
+              <p className="mt-2 text-sm font-medium">
+                {linkedinImporting ? "Importing…" : "Click to upload a Sales Navigator CSV"}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Lead lists &amp; account lists supported · up to 5,000 rows · duplicates skipped
+              </p>
+            </button>
+
+            <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 space-y-2 text-sm text-blue-800">
+              <p className="font-semibold">How to export from LinkedIn Sales Navigator</p>
+              <ol className="list-decimal list-inside space-y-1 text-xs">
+                <li>Open Sales Navigator and go to your <strong>Lead list</strong> or <strong>Account list</strong>.</li>
+                <li>Click the <strong>Export</strong> button (top-right of the list view).</li>
+                <li>Choose <strong>Export to CSV</strong> and wait for the download to complete.</li>
+                <li>Upload the downloaded file here — column names are matched automatically.</li>
+              </ol>
+              <p className="text-xs mt-1 text-blue-700">
+                Tip: connect your LinkedIn account in{" "}
+                <strong>Settings › Integrations</strong> to enable future direct sync features.
+              </p>
+            </div>
           </CardContent>
         </Card>
       </TabsContent>

@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { UK_REGIONS, LEAD_TYPES, CQC_RATINGS, CARE_TYPES, LEAD_SOURCES } from "@/lib/constants";
+import { Linkedin } from "lucide-react";
 import { toast } from "sonner";
 
 type LeadData = {
@@ -33,6 +34,7 @@ type LeadData = {
   phone?: string | null;
   email?: string | null;
   website?: string | null;
+  linkedinUrl?: string | null;
   cqcLocationId?: string | null;
   cqcRating?: string | null;
   beds?: number | null;
@@ -67,6 +69,7 @@ export function LeadForm({
     phone: lead?.phone || "",
     email: lead?.email || "",
     website: lead?.website || "",
+    linkedinUrl: lead?.linkedinUrl || "",
     cqcLocationId: lead?.cqcLocationId || "",
     cqcRating: lead?.cqcRating || "",
     beds: lead?.beds?.toString() || "",
@@ -235,6 +238,16 @@ export function LeadForm({
           <div className="space-y-1.5">
             <Label>Website</Label>
             <Input value={form.website} onChange={(e) => set("website", e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="flex items-center gap-1.5">
+              <Linkedin className="h-3.5 w-3.5 text-[#0A66C2]" /> LinkedIn page URL
+            </Label>
+            <Input
+              value={form.linkedinUrl}
+              onChange={(e) => set("linkedinUrl", e.target.value)}
+              placeholder="https://www.linkedin.com/company/…"
+            />
           </div>
         </CardContent>
       </Card>

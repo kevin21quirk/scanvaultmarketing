@@ -86,6 +86,7 @@ export const LEAD_SOURCES = [
   { value: "CQC", label: "CQC register" },
   { value: "COMPANIES_HOUSE", label: "Companies House" },
   { value: "CSV_IMPORT", label: "CSV import" },
+  { value: "LINKEDIN_SALES_NAV", label: "LinkedIn Sales Navigator" },
   { value: "WEB_SEARCH", label: "Web search" },
   { value: "REFERRAL", label: "Referral" },
   { value: "INBOUND", label: "Inbound enquiry" },

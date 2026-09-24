@@ -63,6 +63,7 @@ enum LeadSource {
   CQC
   COMPANIES_HOUSE
   CSV_IMPORT
+  LINKEDIN_SALES_NAV
   WEB_SEARCH
   REFERRAL
   INBOUND
@@ -104,9 +105,10 @@ model Lead {
   longitude    Float?
 
   // Contact channels
-  phone   String?
-  email   String?
-  website String?
+  phone       String?
+  email       String?
+  website     String?
+  linkedinUrl String?
 
   // Care-sector enrichment
   cqcLocationId  String?  @unique
@@ -428,6 +430,7 @@ enum ImportSource {
   CQC
   COMPANIES_HOUSE
   CSV
+  LINKEDIN_SALES_NAV
   WEB_SEARCH
   MANUAL
 }

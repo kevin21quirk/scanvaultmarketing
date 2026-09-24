@@ -33,6 +33,7 @@ import {
   Trash2,
   ArrowRightLeft,
   Archive,
+  Linkedin,
 } from "lucide-react";
 import { formatDate, leadAddress } from "@/lib/utils";
 import { scoreLabel } from "@/lib/scoring";
@@ -50,6 +51,7 @@ type Lead = {
   phone: string | null;
   email: string | null;
   website: string | null;
+  linkedinUrl: string | null;
   cqcRating: string | null;
   beds: number | null;
   score: number;
@@ -329,6 +331,11 @@ export function LeadsTable({
                       {l.website && (
                         <a href={l.website} target="_blank" rel="noreferrer">
                           <Globe className="h-4 w-4 text-muted-foreground hover:text-scanvault-red" />
+                        </a>
+                      )}
+                      {l.linkedinUrl && (
+                        <a href={l.linkedinUrl} target="_blank" rel="noreferrer" title="View on LinkedIn">
+                          <Linkedin className="h-4 w-4 text-[#0A66C2]/60 hover:text-[#0A66C2]" />
                         </a>
                       )}
                     </div>

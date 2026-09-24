@@ -1,14 +1,14 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState, useTransition } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Trash2, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, Linkedin, CheckCircle2, ExternalLink } from "lucide-react";
 import { STAGE_COLORS } from "@/lib/constants";
 import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
@@ -26,22 +26,49 @@ type Stage = {
 
 type Tag = { id: string; name: string; color: string; _count: { leads: number } };
 type User = { id: string; name: string; email: string; role: string; createdAt: string };
+type LinkedInProfile = { name: string; email: string | null; picture: string | null } | null;
 
 export function SettingsPanel({
   stages,
   tags,
   users,
   isAdmin,
+  linkedinProfile,
 }: {
   stages: Stage[];
   tags: Tag[];
   users: User[];
   isAdmin: boolean;
+  linkedinProfile: LinkedInProfile;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [newStage, setNewStage] = useState({ name: "", color: STAGE_COLORS[1] });
   const [newTag, setNewTag] = useState({ name: "", color: "#DC2626" });
   const [newUser, setNewUser] = useState({ name: "", email: "", password: "" });
+  const [liProfile, setLiProfile] = useState<LinkedInProfile>(linkedinProfile);
+  const [liPending, startLiTransition] = useTransition();
+
+  // Show a toast based on the ?linkedin= query param after OAuth redirect
+  useEffect(() => {
+    const li = searchParams.get("linkedin");
+    if (li === "connected") toast.success("LinkedIn account connected");
+    else if (li === "error") toast.error("LinkedIn connection failed — please try again");
+    else if (li === "not_configured") toast.error("Set LINKEDIN_CLIENT_ID and LINKEDIN_CLIENT_SECRET in your environment first");
+  }, [searchParams]);
+
+  function disconnectLinkedIn() {
+    startLiTransition(async () => {
+      const res = await fetch("/api/auth/linkedin/disconnect", { method: "POST" });
+      if (res.ok) {
+        setLiProfile(null);
+        toast.success("LinkedIn account disconnected");
+        router.refresh();
+      } else {
+        toast.error("Disconnect failed");
+      }
+    });
+  }
 
   async function addStage(e: React.FormEvent) {
     e.preventDefault();
@@ -293,9 +320,98 @@ export function SettingsPanel({
       </TabsContent>
 
       <TabsContent value="integrations" className="space-y-4">
+
+        {/* LinkedIn Sales Navigator */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Integrations &amp; API keys</CardTitle>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Linkedin className="h-4 w-4 text-[#0A66C2]" /> LinkedIn Sales Navigator
+            </CardTitle>
+            <CardDescription>
+              Connect your LinkedIn account to enable future direct-sync features. You can already
+              import lead and account lists from the{" "}
+              <strong>Discover › LinkedIn Sales Nav</strong> tab using exported CSVs.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm">
+            {liProfile ? (
+              <div className="flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 p-3">
+                {liProfile.picture ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={liProfile.picture} alt="" className="h-9 w-9 rounded-full object-cover" />
+                ) : (
+                  <div className="h-9 w-9 rounded-full bg-[#0A66C2] flex items-center justify-center text-white text-xs font-bold">
+                    {liProfile.name.slice(0, 2).toUpperCase()}
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    <span className="font-medium text-green-800">Connected</span>
+                  </div>
+                  <p className="text-xs text-green-700 truncate">
+                    {liProfile.name}{liProfile.email ? ` · ${liProfile.email}` : ""}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={liPending}
+                  onClick={disconnectLinkedIn}
+                >
+                  Disconnect
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="rounded-lg border p-3 bg-gray-50 space-y-2">
+                  <p className="font-medium text-xs text-muted-foreground uppercase tracking-wide">Setup required</p>
+                  <ol className="list-decimal list-inside space-y-1 text-xs text-muted-foreground">
+                    <li>
+                      Go to{" "}
+                      <a
+                        href="https://www.linkedin.com/developers/apps/new"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[#0A66C2] hover:underline inline-flex items-center gap-0.5"
+                      >
+                        linkedin.com/developers <ExternalLink className="h-3 w-3" />
+                      </a>{" "}
+                      and create a new app.
+                    </li>
+                    <li>
+                      Under <strong>Auth</strong>, add the redirect URL:{" "}
+                      <code className="bg-white px-1 py-0.5 rounded border text-[10px]">
+                        {"{YOUR_APP_URL}"}/api/auth/linkedin/callback
+                      </code>
+                    </li>
+                    <li>
+                      Add the <strong>Sign In with LinkedIn using OpenID Connect</strong> product.
+                    </li>
+                    <li>
+                      Copy the <strong>Client ID</strong> and <strong>Client Secret</strong> into your environment:
+                      <br />
+                      <code className="bg-white px-1 py-0.5 rounded border text-[10px]">LINKEDIN_CLIENT_ID</code>{" "}
+                      and{" "}
+                      <code className="bg-white px-1 py-0.5 rounded border text-[10px]">LINKEDIN_CLIENT_SECRET</code>
+                    </li>
+                    <li>Redeploy / restart the app, then click <strong>Connect LinkedIn</strong> below.</li>
+                  </ol>
+                </div>
+                <Button asChild className="bg-[#0A66C2] hover:bg-[#004182] text-white">
+                  <a href="/api/auth/linkedin">
+                    <Linkedin className="h-4 w-4" /> Connect LinkedIn account
+                  </a>
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Other API keys */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Other integrations &amp; API keys</CardTitle>
             <CardDescription>Configure in your <code>.env</code> / Vercel environment variables.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">

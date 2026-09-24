@@ -15,6 +15,7 @@ import {
   Star,
   ExternalLink,
   Pencil,
+  Linkedin,
 } from "lucide-react";
 import { LeadStageSelect } from "@/components/lead-stage-select";
 import { LeadActions } from "@/components/lead-actions";
@@ -182,6 +183,28 @@ export default async function LeadDetailPage({
                     className="hover:text-scanvault-red break-all"
                   >
                     {lead.website.replace(/^https?:\/\//, "")}
+                  </a>
+                </div>
+              )}
+              {lead.linkedinUrl && (
+                <div className="flex items-center gap-2">
+                  <Linkedin className="h-4 w-4 text-[#0A66C2]" />
+                  <a
+                    href={lead.linkedinUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[#0A66C2] hover:underline break-all"
+                  >
+                    View on LinkedIn
+                  </a>
+                  <span className="text-muted-foreground">·</span>
+                  <a
+                    href={`https://www.linkedin.com/sales/search/company?keywords=${encodeURIComponent(lead.name)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-muted-foreground hover:text-[#0A66C2]"
+                  >
+                    Open in Sales Navigator →
                   </a>
                 </div>
               )}
