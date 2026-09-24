@@ -150,15 +150,23 @@ async function searchLocationsByProviderName(
   // ── Name search: fetch all providers in parallel batches ────────────────
   const nameLower = name.toLowerCase();
   const PER_PAGE = 500;
-  const BATCH = 8; // concurrent requests per round
+  const BATCH = 8;
 
-  // First request to get total count
+  // First request — use totalPages if returned, else derive from total
   const firstUrl = new URL(`${BASE}/public/v1/providers`);
   firstUrl.searchParams.set("page", "1");
   firstUrl.searchParams.set("perPage", String(PER_PAGE));
   const firstRes = await fetchUrl(firstUrl.toString());
   const firstData = (await firstRes.json()) as CqcSearchResponse;
-  const totalProviderPages = Math.ceil((firstData.total ?? 0) / PER_PAGE);
+  // Log what the API actually returned so we can debug
+  console.log("CQC providers first page:", {
+    total: firstData.total,
+    totalPages: firstData.totalPages,
+    providerCount: firstData.providers?.length,
+    sampleProvider: firstData.providers?.[0],
+  });
+  const totalProviderPages =
+    firstData.totalPages ?? Math.ceil((firstData.total ?? 0) / PER_PAGE) ?? 60;
 
   const allProviders: CqcProvider[] = [...((firstData.providers ?? []) as CqcProvider[])];
 
@@ -181,10 +189,11 @@ async function searchLocationsByProviderName(
     allProviders.push(...results.flat());
   }
 
-  // Filter providers by name
-  const matched = allProviders.filter((pr) =>
-    pr.providerName?.toLowerCase().includes(nameLower)
-  );
+  // Filter providers by name — handle both providerName and name field variants
+  const matched = allProviders.filter((pr) => {
+    const pName = (pr.providerName ?? (pr as unknown as Record<string, string>).name ?? "").toLowerCase();
+    return pName.includes(nameLower);
+  });
 
   if (matched.length === 0) {
     return { locations: [], total: 0, totalPages: 0 };
