@@ -6,10 +6,13 @@ const BASE = process.env.CQC_API_BASE || "https://api.service.cqc.org.uk";
 
 export type CqcLocation = {
   locationId: string;
-  locationName: string;
+  /** list endpoint returns locationName; detail endpoint returns name */
+  locationName?: string;
+  name?: string;
   alsoKnownAs?: string;
   providerId?: string;
   providerName?: string;
+  brandName?: string;
   postalAddressLine1?: string;
   postalAddressLine2?: string;
   postalAddressTownCity?: string;
@@ -18,6 +21,8 @@ export type CqcLocation = {
   region?: string;
   localAuthority?: string;
   mainPhoneNumber?: string;
+  /** detail endpoint returns website; old API used webAddress */
+  website?: string;
   webAddress?: string;
   numberOfBeds?: number;
   careHome?: "Y" | "N";
@@ -25,7 +30,16 @@ export type CqcLocation = {
   currentRatings?: {
     overall?: { rating?: string; reportDate?: string };
   };
-  regulatedActivities?: Array<{ name: string; code: string }>;
+  regulatedActivities?: Array<{
+    name: string;
+    code: string;
+    contacts?: Array<{
+      personTitle?: string;
+      personGivenName?: string;
+      personFamilyName?: string;
+      personRoles?: string[];
+    }>;
+  }>;
   gacServiceTypes?: Array<{ name: string; description?: string }>;
   specialisms?: Array<{ name: string }>;
 };
@@ -107,31 +121,33 @@ export async function searchLocations(
   };
 }
 
-/** Fetch all locations belonging to a specific CQC provider ID (e.g. "1-10000644"). */
+/**
+ * Fetch all locations for a CQC provider ID (e.g. "1-102642955").
+ * The endpoint returns {"locations":[{"organisationId":"1-xxx"}]} — IDs only.
+ * We fetch the full detail record for each so the import gets real data.
+ */
 export async function getProviderLocations(providerId: string): Promise<CqcLocation[]> {
-  // NOTE: this endpoint accepts no query params — returns all locations in one response
   const res = await fetchUrl(`${BASE}/public/v1/providers/${providerId}/locations`);
   const data = (await res.json()) as {
-    locations?: CqcLocation[];
-    locationIds?: string[];
+    locations?: Array<{ organisationId?: string; locationId?: string }>;
   };
 
-  if (data.locations) return data.locations;
+  const ids = (data.locations ?? [])
+    .map((l) => l.organisationId ?? l.locationId)
+    .filter(Boolean) as string[];
 
-  // Some responses return IDs only — fetch full details for each
-  if (data.locationIds) {
-    const locs: CqcLocation[] = [];
-    for (const id of data.locationIds.slice(0, 500)) {
-      try {
-        locs.push(await getLocation(id));
-      } catch {
-        // skip failed fetches
-      }
+  const locs: CqcLocation[] = [];
+  // Fetch details in parallel batches of 10 to stay within timeout
+  const BATCH = 10;
+  for (let i = 0; i < ids.length; i += BATCH) {
+    const batch = await Promise.allSettled(
+      ids.slice(i, i + BATCH).map((id) => getLocation(id))
+    );
+    for (const r of batch) {
+      if (r.status === "fulfilled") locs.push(r.value);
     }
-    return locs;
   }
-
-  return [];
+  return locs;
 }
 
 /**
@@ -271,12 +287,26 @@ export async function searchProviders(params: {
 
 /** Map a CQC location to our Lead create shape. */
 export function cqcLocationToLead(loc: CqcLocation) {
-  const careTypes = [
-    ...(loc.gacServiceTypes?.map((t) => t.name) ?? []),
-    ...(loc.specialisms?.map((s) => s.name) ?? []),
-  ];
+  const gacTypes = loc.gacServiceTypes?.map((t) => t.name) ?? [];
+  const specialisms = loc.specialisms?.map((s) => s.name) ?? [];
+  const regulatedActivities = loc.regulatedActivities?.map((a) => a.name) ?? [];
+  const careTypes = gacTypes.length ? [...gacTypes, ...specialisms] : regulatedActivities;
+  // Detail endpoint uses `name`; list endpoint uses `locationName`
+  const locationName = loc.locationName ?? loc.name ?? "Unnamed location";
+  // Detail endpoint uses `website`; old API used `webAddress`
+  const website = loc.website ?? loc.webAddress ?? null;
+  // brandName is set on detail records (e.g. "BRAND Barchester Healthcare")
+  const providerName =
+    loc.providerName ??
+    (loc.brandName ? loc.brandName.replace(/^BRAND\s+/i, "") : null);
+
+  // Extract registered manager from regulated activities contacts
+  const registeredManager = loc.regulatedActivities
+    ?.flatMap((a) => a.contacts ?? [])
+    .find((c) => c.personRoles?.includes("Registered Manager"));
+
   return {
-    name: loc.locationName || "Unnamed location",
+    name: locationName,
     akaName: loc.alsoKnownAs || null,
     type: "CARE_HOME" as const,
     addressLine1: loc.postalAddressLine1 || null,
@@ -287,7 +317,7 @@ export function cqcLocationToLead(loc: CqcLocation) {
     region: loc.region || null,
     country: "England",
     phone: loc.mainPhoneNumber || null,
-    website: loc.webAddress || null,
+    website: website ? (website.startsWith("http") ? website : `https://${website}`) : null,
     cqcLocationId: loc.locationId,
     cqcProviderId: loc.providerId || null,
     cqcProviderUrl: loc.providerId
@@ -299,9 +329,13 @@ export function cqcLocationToLead(loc: CqcLocation) {
       : null,
     beds: loc.numberOfBeds ?? null,
     careTypes,
-    providerName: loc.providerName || null,
+    providerName,
     localAuthority: loc.localAuthority || null,
     source: "CQC" as const,
     sourceDetail: "CQC register",
+    // Include registered manager name in notes so outreach can be personalised
+    notes: registeredManager
+      ? `Registered Manager: ${registeredManager.personTitle ?? ""} ${registeredManager.personGivenName ?? ""} ${registeredManager.personFamilyName ?? ""}`.trim()
+      : undefined,
   };
 }
