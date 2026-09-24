@@ -172,9 +172,8 @@ export function DiscoverPanel() {
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || "Import failed");
-          const modeLabel = data.mode === "lead" ? "lead list" : "account list";
           toast.success(
-            `LinkedIn ${modeLabel}: ${data.imported} imported, ${data.duplicates} already existed`
+            `LinkedIn ${data.mode}: ${data.imported} imported, ${data.duplicates} already existed`
           );
           router.refresh();
         } catch (e) {
@@ -478,18 +477,33 @@ export function DiscoverPanel() {
               </p>
             </button>
 
-            <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 space-y-2 text-sm text-blue-800">
-              <p className="font-semibold">How to export from LinkedIn Sales Navigator</p>
-              <ol className="list-decimal list-inside space-y-1 text-xs">
-                <li>Open Sales Navigator and go to your <strong>Lead list</strong> or <strong>Account list</strong>.</li>
-                <li>Click the <strong>Export</strong> button (top-right of the list view).</li>
-                <li>Choose <strong>Export to CSV</strong> and wait for the download to complete.</li>
-                <li>Upload the downloaded file here — column names are matched automatically.</li>
-              </ol>
-              <p className="text-xs mt-1 text-blue-700">
-                Tip: connect your LinkedIn account in{" "}
-                <strong>Settings › Integrations</strong> to enable future direct sync features.
-              </p>
+            <div className="space-y-3">
+              <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 space-y-2 text-sm text-blue-800">
+                <p className="font-semibold">Option A — LinkedIn Connections (free, works for everyone)</p>
+                <ol className="list-decimal list-inside space-y-1 text-xs">
+                  <li>
+                    Go to{" "}
+                    <a href="https://www.linkedin.com/mypreferences/d/categories/data" target="_blank" rel="noreferrer" className="underline">
+                      linkedin.com → Settings → Data Privacy → Get a copy of your data
+                    </a>
+                  </li>
+                  <li>Tick <strong>Connections</strong>, click <strong>Request archive</strong> and wait for the email.</li>
+                  <li>Download and unzip — upload the <code>Connections.csv</code> file here.</li>
+                </ol>
+                <p className="text-xs text-blue-700">Creates one lead per company and one contact per connection.</p>
+              </div>
+
+              <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 space-y-2 text-sm text-blue-800">
+                <p className="font-semibold">Option B — Sales Navigator List Export <span className="font-normal opacity-70">(Advanced / Advanced Plus plan only)</span></p>
+                <ol className="list-decimal list-inside space-y-1 text-xs">
+                  <li>In Sales Navigator, open a saved <strong>Lead list</strong> or <strong>Account list</strong>.</li>
+                  <li>Select all rows, then click the <strong>&hellip;</strong> menu → <strong>Export to CSV</strong>.</li>
+                  <li>Upload the downloaded file here — column names are auto-matched.</li>
+                </ol>
+                <p className="text-xs text-amber-700 mt-1">
+                  ⚠ The export button is only visible on Advanced/Advanced Plus plans. If you don&apos;t see it, use Option A above.
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>

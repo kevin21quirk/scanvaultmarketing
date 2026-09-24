@@ -186,28 +186,26 @@ export default async function LeadDetailPage({
                   </a>
                 </div>
               )}
-              {lead.linkedinUrl && (
-                <div className="flex items-center gap-2">
-                  <Linkedin className="h-4 w-4 text-[#0A66C2]" />
+              <div className="flex items-center gap-2 flex-wrap pt-1">
+                {lead.linkedinUrl && (
                   <a
                     href={lead.linkedinUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-[#0A66C2] hover:underline break-all"
+                    className="inline-flex items-center gap-1.5 text-sm text-[#0A66C2] hover:underline"
                   >
-                    View on LinkedIn
+                    <Linkedin className="h-4 w-4" /> LinkedIn page
                   </a>
-                  <span className="text-muted-foreground">·</span>
-                  <a
-                    href={`https://www.linkedin.com/sales/search/company?keywords=${encodeURIComponent(lead.name)}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-xs text-muted-foreground hover:text-[#0A66C2]"
-                  >
-                    Open in Sales Navigator →
-                  </a>
-                </div>
-              )}
+                )}
+                <a
+                  href={`https://www.linkedin.com/sales/search/company?keywords=${encodeURIComponent(lead.name)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-[#0A66C2] text-white hover:bg-[#004182]"
+                >
+                  <Linkedin className="h-3 w-3" /> Search Sales Navigator
+                </a>
+              </div>
               {lead.beds != null && (
                 <div className="flex items-center gap-2">
                   <BedDouble className="h-4 w-4 text-muted-foreground" />
@@ -297,6 +295,7 @@ export default async function LeadDetailPage({
         <div className="lg:col-span-2">
           <ActivityPanel
             leadId={lead.id}
+            leadName={lead.name}
             contacts={lead.contacts.map((c) => ({
               id: c.id,
               name: `${c.firstName} ${c.lastName || ""}`.trim(),

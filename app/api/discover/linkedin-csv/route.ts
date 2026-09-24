@@ -16,14 +16,23 @@ function pick(row: CsvRow, ...keys: string[]): string | null {
   return null;
 }
 
-// Detect whether this is a Lead List (people) or Account List (companies) export
-function detectType(rows: CsvRow[]): "lead" | "account" {
+// Detect import format:
+//  "connections" = LinkedIn My Network export (First Name, Last Name, URL, Company, Position)
+//  "lead"        = Sales Navigator Lead List export (adds Title, Geography, Company Size…)
+//  "account"     = Sales Navigator Account List export (Account Name, Industry…)
+function detectType(rows: CsvRow[]): "connections" | "lead" | "account" {
   const first = rows[0] ?? {};
-  const keys = Object.keys(first).map((k) => k.toLowerCase());
+  const keys = Object.keys(first).map((k) => k.toLowerCase().trim());
+  // LinkedIn Connections export has a "connected on" column
+  if (keys.some((k) => k.includes("connected on"))) return "connections";
   if (keys.some((k) => k.includes("first name") || k === "firstname")) return "lead";
   if (keys.some((k) => k.includes("account name") || k.includes("company name"))) return "account";
-  // Fallback: if there's a "company" column alongside "title", treat as lead list
-  if (keys.some((k) => k.includes("title")) && keys.some((k) => k.includes("company"))) return "lead";
+  // Fallback: if there's a "company" column alongside "title" or "position", treat as lead list
+  if (
+    (keys.some((k) => k.includes("title")) || keys.some((k) => k.includes("position"))) &&
+    keys.some((k) => k.includes("company"))
+  )
+    return "lead";
   return "account";
 }
 
@@ -38,11 +47,17 @@ export async function POST(req: NextRequest) {
     }
 
     const mode = detectType(rows);
+    // Strip LinkedIn's note rows at the top (they start with "Notes:" or are blank)
+    const dataRows = rows.filter((r) => {
+      const vals = Object.values(r).join("").trim();
+      return vals.length > 0 && !vals.startsWith("Notes:");
+    });
+
     const job = await prisma.importJob.create({
       data: {
         source: "LINKEDIN_SALES_NAV",
         status: "RUNNING",
-        totalFound: rows.length,
+        totalFound: dataRows.length,
         createdById: user.id,
       },
     });
@@ -53,14 +68,65 @@ export async function POST(req: NextRequest) {
     let failed = 0;
     const errors: string[] = [];
 
-    for (const row of rows.slice(0, 5000)) {
+    for (const row of dataRows.slice(0, 5000)) {
       try {
-        if (mode === "lead") {
+        if (mode === "connections") {
+          // --- LinkedIn My Network connections export ---
+          // Columns: First Name, Last Name, URL, Email Address, Company, Position, Connected On
+          const firstName = pick(row, "First Name", "firstname") ?? "";
+          const lastName = pick(row, "Last Name", "lastname") ?? "";
+          const company = pick(row, "Company");
+          const title = pick(row, "Position", "Title", "Job Title");
+          const email = pick(row, "Email Address", "Email");
+          const linkedInProfile = pick(row, "URL", "Profile URL") ?? null;
+
+          if (!company && !firstName) { failed++; continue; }
+
+          let lead = company
+            ? await prisma.lead.findFirst({ where: { name: { equals: company, mode: "insensitive" } } })
+            : null;
+
+          if (!lead && company) {
+            const mapped = {
+              name: company,
+              type: "OTHER" as const,
+              source: "LINKEDIN_SALES_NAV" as const,
+              sourceDetail: "LinkedIn Connections export",
+              stageId: defaultStage?.id ?? null,
+            };
+            lead = await prisma.lead.create({ data: { ...mapped, score: scoreLead({}) } });
+            await autoEnroll(lead.id);
+            imported++;
+          } else if (lead) {
+            duplicates++;
+          } else { failed++; continue; }
+
+          if (lead && (firstName || linkedInProfile)) {
+            const existing = email
+              ? await prisma.contact.findFirst({ where: { leadId: lead.id, email: { equals: email, mode: "insensitive" } } })
+              : linkedInProfile
+                ? await prisma.contact.findFirst({ where: { leadId: lead.id, linkedIn: linkedInProfile } })
+                : await prisma.contact.findFirst({ where: { leadId: lead.id, firstName: { equals: firstName || "Unknown", mode: "insensitive" } } });
+
+            if (!existing) {
+              await prisma.contact.create({
+                data: {
+                  leadId: lead.id,
+                  firstName: firstName || "Unknown",
+                  lastName: lastName || null,
+                  jobTitle: title || null,
+                  email: email || null,
+                  linkedIn: linkedInProfile || null,
+                },
+              });
+            }
+          }
+        } else if (mode === "lead") {
           // --- Lead-list (people) import ---
           const firstName = pick(row, "First Name", "firstname") ?? "";
           const lastName = pick(row, "Last Name", "lastname") ?? "";
           const company = pick(row, "Company", "Company Name", "Account Name", "Account");
-          const title = pick(row, "Title", "Job Title");
+          const title = pick(row, "Title", "Job Title", "Position");
           const email = pick(row, "Email Address", "Email", "email");
           const phone = pick(row, "Phone Number", "Phone");
           const linkedInProfile =
@@ -210,7 +276,8 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ jobId: job.id, imported, duplicates, failed, errors, mode });
+    const modeLabel = mode === "connections" ? "connections" : mode === "lead" ? "lead list" : "account list";
+    return NextResponse.json({ jobId: job.id, imported, duplicates, failed, errors, mode: modeLabel });
   } catch (e) {
     console.error("LinkedIn CSV import error", e);
     return NextResponse.json({ error: "LinkedIn CSV import failed" }, { status: 500 });

@@ -26,6 +26,7 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   History,
+  ExternalLink,
 } from "lucide-react";
 import { ACTIVITY_OUTCOMES } from "@/lib/constants";
 import { formatRelative } from "@/lib/utils";
@@ -60,10 +61,12 @@ type Activity = {
 
 export function ActivityPanel({
   leadId,
+  leadName,
   contacts,
   activities,
 }: {
   leadId: string;
+  leadName: string;
   contacts: { id: string; name: string }[];
   activities: Activity[];
 }) {
@@ -222,6 +225,23 @@ export function ActivityPanel({
               className="bg-white text-xs"
             />
           </div>
+          {form.type === "LINKEDIN" && (
+            <div className="rounded-md border border-[#0A66C2]/20 bg-[#0A66C2]/5 px-3 py-2 flex items-center justify-between gap-3">
+              <span className="text-xs text-[#0A66C2]">Open Sales Navigator to send the message, then log it here.</span>
+              <a
+                href={
+                  form.contactId && contacts.find((c) => c.id === form.contactId)
+                    ? `https://www.linkedin.com/sales/search/people?keywords=${encodeURIComponent(contacts.find((c) => c.id === form.contactId)!.name)}`
+                    : `https://www.linkedin.com/sales/search/company?keywords=${encodeURIComponent(leadName)}`
+                }
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-xs whitespace-nowrap px-2 py-1 rounded bg-[#0A66C2] text-white hover:bg-[#004182]"
+              >
+                <Linkedin className="h-3 w-3" /> Open Sales Navigator <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
+          )}
           <div className="flex flex-wrap items-end gap-3">
             <div className="space-y-1.5">
               <Label className="text-xs">Schedule follow-up</Label>

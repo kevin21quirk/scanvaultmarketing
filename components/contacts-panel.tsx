@@ -15,7 +15,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Plus, Mail, Phone, Linkedin, Trash2, Star } from "lucide-react";
+import { Plus, Mail, Phone, Linkedin, Trash2, Star, ExternalLink } from "lucide-react";
 import { initials } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -162,7 +162,7 @@ export function ContactsPanel({ leadId, contacts }: { leadId: string; contacts: 
                 {c.isPrimary && <Star className="h-3 w-3 text-amber-500 fill-amber-500" />}
               </div>
               {c.jobTitle && <p className="text-xs text-muted-foreground">{c.jobTitle}</p>}
-              <div className="flex gap-2 mt-1">
+              <div className="flex gap-2 mt-1 flex-wrap">
                 {c.email && (
                   <a href={`mailto:${c.email}`} title={c.email}>
                     <Mail className="h-3.5 w-3.5 text-muted-foreground hover:text-scanvault-red" />
@@ -173,9 +173,20 @@ export function ContactsPanel({ leadId, contacts }: { leadId: string; contacts: 
                     <Phone className="h-3.5 w-3.5 text-muted-foreground hover:text-scanvault-red" />
                   </a>
                 )}
-                {c.linkedIn && (
-                  <a href={c.linkedIn} target="_blank" rel="noreferrer">
-                    <Linkedin className="h-3.5 w-3.5 text-muted-foreground hover:text-scanvault-red" />
+                {c.linkedIn ? (
+                  <a href={c.linkedIn} target="_blank" rel="noreferrer" title="LinkedIn profile">
+                    <Linkedin className="h-3.5 w-3.5 text-[#0A66C2]" />
+                  </a>
+                ) : (
+                  <a
+                    href={`https://www.linkedin.com/sales/search/people?keywords=${encodeURIComponent(`${c.firstName} ${c.lastName || ""}`.trim())}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Search in Sales Navigator"
+                    className="inline-flex items-center gap-0.5 text-[10px] text-[#0A66C2]/70 hover:text-[#0A66C2]"
+                  >
+                    <Linkedin className="h-3 w-3" />
+                    <ExternalLink className="h-2.5 w-2.5" />
                   </a>
                 )}
               </div>
