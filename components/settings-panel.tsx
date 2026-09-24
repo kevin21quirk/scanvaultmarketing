@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Trash2, ArrowUp, ArrowDown, Linkedin, CheckCircle2, ExternalLink } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, Linkedin, CheckCircle2, ExternalLink, Zap, Copy } from "lucide-react";
 import { STAGE_COLORS } from "@/lib/constants";
 import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
@@ -407,6 +407,95 @@ export function SettingsPanel({
                 </Button>
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Zapier */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Zap className="h-4 w-4 text-[#FF4A00]" /> Zapier — automatic lead sync
+            </CardTitle>
+            <CardDescription>
+              Connect Zapier to push leads directly into ScanVault from LinkedIn Sales Navigator,
+              HubSpot, spreadsheets, or any other app — no CSV upload needed.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm">
+            <div className="rounded-lg border p-3 bg-gray-50 space-y-3">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
+                  Step 1 — generate a secret key
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Create a random string (e.g. in your terminal:{" "}
+                  <code className="bg-white px-1 py-0.5 rounded border">openssl rand -hex 32</code>
+                  ) and add it to Vercel as:
+                </p>
+                <code className="mt-1 block bg-white px-2 py-1 rounded border text-[11px]">
+                  ZAPIER_WEBHOOK_SECRET=your_random_string
+                </code>
+              </div>
+
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
+                  Step 2 — copy the webhook URL
+                </p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 bg-white px-2 py-1 rounded border text-[11px] break-all select-all">
+                    {typeof window !== "undefined" ? window.location.origin : "https://your-app.vercel.app"}/api/webhooks/zapier
+                  </code>
+                  <button
+                    type="button"
+                    title="Copy URL"
+                    onClick={() => {
+                      const url = `${window.location.origin}/api/webhooks/zapier`;
+                      navigator.clipboard.writeText(url).then(() => {
+                        import("sonner").then(({ toast }) => toast.success("Webhook URL copied"));
+                      });
+                    }}
+                    className="shrink-0 p-1.5 rounded border hover:bg-gray-100"
+                  >
+                    <Copy className="h-3.5 w-3.5 text-muted-foreground" />
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">
+                  Step 3 — set up the Zap in Zapier
+                </p>
+                <ol className="list-decimal list-inside space-y-1 text-xs text-muted-foreground">
+                  <li>
+                    <strong>Trigger:</strong> LinkedIn Sales Navigator → <em>New Saved Account</em> or <em>New Saved Lead</em>
+                  </li>
+                  <li>
+                    <strong>Action:</strong> Webhooks by Zapier → <em>POST</em>
+                  </li>
+                  <li>Paste the webhook URL above into the <strong>URL</strong> field</li>
+                  <li>Set <strong>Payload Type</strong> to <em>JSON</em></li>
+                  <li>
+                    Map fields from your trigger — any of these are recognised automatically:
+                    <br />
+                    <code className="text-[10px]">name / company, first_name, last_name, title, email, phone, linkedin_url, website, location, industry</code>
+                  </li>
+                  <li>
+                    Under <strong>Headers</strong> add:
+                    <code className="ml-1 text-[10px] bg-white px-1 py-0.5 rounded border">Authorization: Bearer your_random_string</code>
+                  </li>
+                  <li>Test the Zap — a new lead should appear in ScanVault within seconds.</li>
+                </ol>
+              </div>
+            </div>
+
+            <a
+              href="https://zapier.com/apps/linkedin-sales-navigator/integrations/webhook"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs text-[#FF4A00] hover:underline"
+            >
+              Open Zapier <ExternalLink className="h-3 w-3" />
+            </a>
           </CardContent>
         </Card>
 
