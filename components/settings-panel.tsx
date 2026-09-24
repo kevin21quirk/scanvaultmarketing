@@ -380,10 +380,12 @@ export function SettingsPanel({
                       and create a new app.
                     </li>
                     <li>
-                      Under <strong>Auth</strong>, add the redirect URL:{" "}
-                      <code className="bg-white px-1 py-0.5 rounded border text-[10px]">
-                        {"{YOUR_APP_URL}"}/api/auth/linkedin/callback
-                      </code>
+                      Under <strong>Auth</strong>, add this exact redirect URL:
+                      <div className="mt-1 flex items-center gap-1">
+                        <code className="bg-white px-1.5 py-1 rounded border text-[10px] break-all select-all">
+                          {typeof window !== "undefined" ? window.location.origin : "https://your-app.vercel.app"}/api/auth/linkedin/callback
+                        </code>
+                      </div>
                     </li>
                     <li>
                       Add the <strong>Sign In with LinkedIn using OpenID Connect</strong> product.

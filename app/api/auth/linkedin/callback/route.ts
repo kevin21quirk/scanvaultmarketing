@@ -3,17 +3,14 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { cookies } from "next/headers";
 
-function getAppUrl() {
-  const raw =
-    process.env.APP_URL ||
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
-    process.env.NEXT_PUBLIC_APP_URL ||
-    "http://localhost:3000";
-  return raw.replace(/\/$/, "");
+function originFromRequest(req: NextRequest) {
+  const proto = req.headers.get("x-forwarded-proto") ?? "https";
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "localhost:3000";
+  return `${proto}://${host}`;
 }
 
 export async function GET(req: NextRequest) {
-  const appUrl = getAppUrl();
+  const appUrl = originFromRequest(req);
   const user = await getSession();
   if (!user) return NextResponse.redirect(`${appUrl}/login`);
 

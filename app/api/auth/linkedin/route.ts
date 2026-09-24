@@ -1,29 +1,27 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { cookies } from "next/headers";
 
-// Resolve the canonical app origin — server-side only, no NEXT_PUBLIC_ prefix needed.
-// Priority: APP_URL (set in Vercel as a plain env var) → VERCEL_URL (auto-set by Vercel) → localhost
-function getAppUrl() {
-  const raw =
-    process.env.APP_URL ||
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
-    process.env.NEXT_PUBLIC_APP_URL ||
-    "http://localhost:3000";
-  return raw.replace(/\/$/, "");
+// Derive the app origin from the live request — always matches what the browser/LinkedIn sees.
+function originFromRequest(req: NextRequest) {
+  // x-forwarded-proto / host are set by Vercel's edge (and most proxies)
+  const proto = req.headers.get("x-forwarded-proto") ?? "https";
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "localhost:3000";
+  return `${proto}://${host}`;
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const user = await getSession();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  const appUrl = originFromRequest(req);
+
   const clientId = process.env.LINKEDIN_CLIENT_ID;
   if (!clientId) {
-    return NextResponse.redirect(`${getAppUrl()}/settings?linkedin=not_configured`);
+    return NextResponse.redirect(`${appUrl}/settings?linkedin=not_configured`);
   }
 
   const state = crypto.randomUUID();
-  const appUrl = getAppUrl();
   const redirectUri = `${appUrl}/api/auth/linkedin/callback`;
 
   const params = new URLSearchParams({
